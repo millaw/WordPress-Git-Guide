@@ -167,8 +167,6 @@ echo "Backup completed: $BACKUP_DIR"
         
         <h3>2. Restore WordPress Files</h3>
         <pre>
-openssl enc -aes-256-cbc -d -in /var/backups/mysql/wordpress_files_YOUR_BACKUP_DATE.tar.gz
-        <pre>
 openssl enc -aes-256-cbc -d -in /var/backups/mysql/wordpress_files_YOUR_BACKUP_DATE.tar.gz -out wordpress_files.tar.gz -k "your-secret-key"
 tar -xzf wordpress_files.tar.gz -C /var/www/html/wordpress
 chown -R www-data:www-data /var/www/html/wordpress
