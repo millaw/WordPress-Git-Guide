@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WordPress Git Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        pre {
+            background: #eee;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WordPress Git Guide</h1>
+        
+        <h2>Introduction</h2>
+        <p>This guide covers the secure installation of WordPress with Git version control, automated deployment, and backups.</p>
+        
+        <h2>Step 1: Setting Up Git Server</h2>
+        <h3>1. Install Git</h3>
+        <pre>sudo apt install git -y</pre>
+        <h3>2. Create a Git User</h3>
+        <pre>sudo adduser git</pre>
+        <h3>3. Create a Bare Repository</h3>
+        <pre>
+mkdir -p /home/git/repositories
+cd /home/git/repositories
+git init --bare wordpress.git
+        </pre>
+        
+        <h2>Step 2: Installing WordPress</h2>
+        <h3>1. Install Required Packages</h3>
+        <pre>
+sudo apt update && sudo apt upgrade -y
+sudo apt install apache2 mariadb-server php php-mysql php-curl php-gd php-mbstring php-xml php-xmlrpc php-soap php-intl php-zip unzip -y
+        </pre>
+        
+        <h3>2. Enable Apache and MySQL</h3>
+        <pre>
+sudo systemctl enable --now apache2 mariadb
+        </pre>
+
+        <h3>3. Secure MySQL</h3>
+        <pre>sudo mysql_secure_installation</pre>
+        
+        <h3>4. Create a WordPress Database</h3>
+        <pre>
+sudo mysql -u root -p
+CREATE DATABASE wordpress;
+CREATE USER 'wp_user'@'localhost' IDENTIFIED BY 'your_password';
+GRANT SELECT, INSERT, UPDATE, DELETE ON wordpress.* TO 'wp_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+        </pre>
+        
+        <h3>5. Download & Install WordPress</h3>
+        <pre>
+cd /var/www/html
+sudo wget https://wordpress.org/latest.tar.gz
+sudo tar -xzf latest.tar.gz
+sudo rm latest.tar.gz
+sudo chown -R www-data:www-data wordpress
+sudo chmod -R 755 wordpress
+        </pre>
+        
+        <h2>Step 3: Automating Deployment with Git Hooks</h2>
+        <h3>1. Configure post-receive Hook</h3>
+        <pre>
+cd /home/git/repositories/wordpress.git/hooks
+nano post-receive
+        </pre>
+        <h3>2. Add the Following Script</h3>
+        <pre>
+#!/bin/bash
+GIT_WORK_TREE=/var/www/html/wordpress
+export GIT_WORK_TREE
+cd $GIT_WORK_TREE || exit
+git fetch --all
+git reset --hard origin/main
+git checkout -f main
+chown -R www-data:www-data $GIT_WORK_TREE
+chmod -R 755 $GIT_WORK_TREE
+systemctl restart apache2
+echo "Deployment completed successfully!"
+        </pre>
+        <h3>3. Make the Script Executable</h3>
+        <pre>chmod +x post-receive</pre>
+        
+        <h2>Step 4: Automating Backups</h2>
+        <h3>1. Create a Backup Script</h3>
+        <pre>
+nano /var/www/html/wordpress/backup.sh
+        </pre>
+        <pre>
+#!/bin/bash
+BACKUP_DIR="/var/backups/mysql"
+TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+DB_NAME="wordpress"
+DB_USER="wp_user"
+DB_PASSWORD="your_password"
+mkdir -p $BACKUP_DIR
+mysqldump --single-transaction -u $DB_USER -p$DB_PASSWORD $DB_NAME > $BACKUP_DIR/wordpress_$TIMESTAMP.sql
+find $BACKUP_DIR -type f -name "*.sql" -mtime +7 -exec rm {} \; -exec echo "Deleted: {}" >> $BACKUP_DIR/deleted_backups.log \;
+tar -czf - /var/www/html/wordpress | openssl enc -aes-256-cbc -e -out $BACKUP_DIR/wordpress_files_$TIMESTAMP.tar.gz -k "your-secret-key"
+echo "Backup completed: $BACKUP_DIR"
+        </pre>
+        
+        <h2>Step 5: Restoring WordPress</h2>
+        <h3>1. Restore the Database</h3>
+        <pre>mysql -u wp_user -p wordpress < /var/backups/mysql/wordpress_YOUR_BACKUP_DATE.sql</pre>
+        <h3>2. Restore WordPress Files</h3>
+        <pre>
+openssl enc -aes-256-cbc -d -in /var/backups/mysql/wordpress_files_YOUR_BACKUP_DATE.tar.gz -out wordpress_files.tar.gz -k "your-secret-key"
+tar -xzf wordpress_files.tar.gz -C /var/www/html/wordpress
+chown -R www-data:www-data /var/www/html/wordpress
+chmod -R 755 /var/www/html/wordpress
+        </pre>
+        <h3>3. Restart Apache & MySQL</h3>
+        <pre>
+sudo systemctl restart apache2
+sudo systemctl restart mysql
+        </pre>
+        
+        <h2>Conclusion</h2>
+        <p>This guide ensures that WordPress is secure, version-controlled, and backed up properly.</p>
+    </div>
+</body>
+</html>
