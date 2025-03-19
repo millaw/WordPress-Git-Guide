@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WordPress Installation & Git Version Control Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f9f9f9;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        pre {
+            background: #eee;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        code {
+            font-family: Consolas, monospace;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>WordPress Installation, Git Version Control, Secure Configuration, Automated Deployment & Backups</h1>
+
+    <h2>Step 1: Install WordPress on Linux with Apache</h2>
+
+    <h3>1. Install Required Packages</h3>
+    <pre><code>sudo apt update && sudo apt upgrade -y
+sudo apt install apache2 mariadb-server php php-mysql php-curl php-gd php-mbstring php-xml php-xmlrpc php-soap php-intl php-zip unzip -y</code></pre>
+
+    <h3>2. Enable Apache and MySQL</h3>
+    <pre><code>sudo systemctl enable --now apache2 mariadb</code></pre>
+
+    <h3>3. Secure MySQL</h3>
+    <pre><code>sudo mysql_secure_installation</code></pre>
+
+    <h3>4. Create a WordPress Database</h3>
+    <pre><code>sudo mysql -u root -p</code></pre>
+    <pre><code>CREATE DATABASE wordpress;
+CREATE USER 'wp_user'@'localhost' IDENTIFIED BY 'your_password';
+GRANT ALL PRIVILEGES ON wordpress.* TO 'wp_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;</code></pre>
+
+    <h3>5. Download & Install WordPress</h3>
+    <pre><code>cd /var/www/html
+sudo wget https://wordpress.org/latest.tar.gz
+sudo tar -xzf latest.tar.gz
+sudo rm latest.tar.gz
+sudo chown -R www-data:www-data wordpress
+sudo chmod -R 755 wordpress</code></pre>
+
+    <h3>6. Configure Apache for WordPress</h3>
+    <pre><code>sudo nano /etc/apache2/sites-available/wordpress.conf</code></pre>
+    <pre><code>&lt;VirtualHost *:80&gt;
+    ServerAdmin admin@example.com
+    DocumentRoot /var/www/html/wordpress
+    ServerName example.com
+
+    &lt;Directory /var/www/html/wordpress/&gt;
+        AllowOverride All
+        Require all granted
+    &lt;/Directory&gt;
+
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+&lt;/VirtualHost&gt;</code></pre>
+
+    <pre><code>sudo a2ensite wordpress.conf
+sudo a2enmod rewrite
+sudo systemctl restart apache2</code></pre>
+
+    <h2>Step 2: Configure Secure Database Credentials</h2>
+
+    <h3>1. Create a .env File</h3>
+    <pre><code>cd /var/www/html/wordpress
+nano .env</code></pre>
+
+    <pre><code>DB_NAME=wordpress
+DB_USER=wp_user
+DB_PASSWORD=your_secure_password
+DB_HOST=localhost
+AUTH_KEY=your-auth-key
+SECURE_AUTH_KEY=your-secure-auth-key
+LOGGED_IN_KEY=your-logged-in-key
+NONCE_KEY=your-nonce-key</code></pre>
+
+    <h3>2. Modify wp-config.php to Use .env</h3>
+    <pre><code>mv wp-config-sample.php wp-config.php
+nano wp-config.php</code></pre>
+
+    <pre><code>// Load environment variables
+if (file_exists(__DIR__ . '/.env')) {
+    $dotenv = parse_ini_file(__DIR__ . '/.env');
+    foreach ($dotenv as $key => $value) {
+        putenv("$key=$value");
+    }
+}
+
+// Define database settings
+define('DB_NAME', getenv('DB_NAME'));
+define('DB_USER', getenv('DB_USER'));
+define('DB_PASSWORD', getenv('DB_PASSWORD'));
+define('DB_HOST', getenv('DB_HOST'));
+
+// Authentication keys and salts
+define('AUTH_KEY', getenv('AUTH_KEY'));
+define('SECURE_AUTH_KEY', getenv('SECURE_AUTH_KEY'));
+define('LOGGED_IN_KEY', getenv('LOGGED_IN_KEY'));
+define('NONCE_KEY', getenv('NONCE_KEY'));</code></pre>
+
+    <h2>Step 3: Set Up a Local Git Server</h2>
+
+    <h3>1. Install Git</h3>
+    <pre><code>sudo apt install git -y</code></pre>
+
+    <h3>2. Create a Git User</h3>
+    <pre><code>sudo adduser git
+su - git</code></pre>
+
+    <h3>3. Create a Bare Repository</h3>
+    <pre><code>mkdir -p ~/repositories
+cd ~/repositories
+git init --bare wordpress.git</code></pre>
+
+    <h3>4. Add Remote Repository to WordPress</h3>
+    <pre><code>cd /var/www/html/wordpress
+git init
+git remote add origin ssh://git@your-git-server-ip:/home/git/repositories/wordpress.git
+git add .
+git commit -m "Initial commit"
+git push -u origin main</code></pre>
+
+    <h2>Step 4: Automate WordPress Backups</h2>
+
+    <h3>1. Create a Backup Script</h3>
+    <pre><code>sudo nano /var/www/html/wordpress/backup.sh</code></pre>
+
+    <pre><code>#!/bin/bash
+BACKUP_DIR="/var/backups/mysql"
+TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+DB_NAME="wordpress"
+DB_USER="wp_user"
+DB_PASSWORD="your_password"
+mkdir -p $BACKUP_DIR
+mysqldump -u $DB_USER -p$DB_PASSWORD $DB_NAME > $BACKUP_DIR/wordpress_$TIMESTAMP.sql
+find $BACKUP_DIR -type f -name "*.sql" -mtime +7 -exec rm {} \;
+tar -czf $BACKUP_DIR/wordpress_files_$TIMESTAMP.tar.gz /var/www/html/wordpress
+echo "Backup completed: $BACKUP_DIR"</code></pre>
+
+    <h3>2. Automate Daily Backups (Cron Job)</h3>
+    <pre><code>sudo crontab -e</code></pre>
+    <pre><code>0 2 * * * /var/www/html/wordpress/backup.sh > /dev/null 2>&1</code></pre>
+
+    <h2>Step 5: Automate WordPress Deployment with Git</h2>
+
+    <h3>1. Modify Git post-receive Hook</h3>
+    <pre><code>sudo nano /home/git/repositories/wordpress.git/hooks/post-receive</code></pre>
+
+    <pre><code>#!/bin/bash
+TARGET="/var/www/html/wordpress"
+GIT_DIR="/home/git/repositories/wordpress.git"
+
+echo "Starting deployment..."
+/var/www/html/wordpress/backup.sh
+
+echo "Pulling latest changes..."
+cd $TARGET || exit
+unset GIT_DIR
+git reset --hard
+git pull origin main
+
+chown -R www-data:www-data $TARGET
+chmod -R 755 $TARGET
+echo "Deployment completed!"</code></pre>
+
+    <pre><code>sudo chmod +x /home/git/repositories/wordpress.git/hooks/post-receive</code></pre>
+
+    <h2>Summary</h2>
+    <p>✅ Installed WordPress securely with <code>.env</code> file</p>
+    <p>✅ Set up Git version control</p>
+    <p>✅ Created an automated backup system</p>
+    <p>✅ Configured Git auto-deployment</p>
+
+    <p>Your WordPress is now fully automated and secured!</p>
+
+</body>
+</html>
